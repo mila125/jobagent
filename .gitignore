@@ -1,17 +1,40 @@
-# Personal data: never commit
+# Datos personales y configuraciones privadas
 /config.yaml
 /profile.yaml
 /cv/
 /data/
-*.xlsx
-.env*
+
+# Variables de entorno y credenciales
+.env
+.env.*
+!.env.example
 *.pem
 *.key
+
+# Copias de seguridad
+*.bak
+*.backup.*
+
+# Sesiones de navegadores
+test_chrome_profile/
+chrome_profile/
+browser_profile/
+user_data/
+sessions/
+auth/
+playwright/.auth/
+
+# Archivos generados
+*.xlsx
+*.xls
 *.log
 
 # Python
 __pycache__/
+*.pyc
 .venv/
+venv/
 *.egg-info/
 .pytest_cache/
 .ruff_cache/
+/diagnostico_computrabajo/

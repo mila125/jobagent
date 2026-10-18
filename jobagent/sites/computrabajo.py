@@ -1,4 +1,9 @@
-"""Computrabajo Venezuela: applies with the CV stored in the Computrabajo profile."""
+from urllib.parse import urljoin
+
+from jobagent.location import (
+    computrabajo_base,
+    computrabajo_country_code,
+)
 import re
 import unicodedata
 
@@ -6,9 +11,10 @@ from jobagent.core import Offer, SessionExpired, best_form, click_text, pause, v
 
 NAME = "computrabajo"
 LABEL = "Computrabajo"
-LOGIN_URL = "https://candidato.ve.computrabajo.com/acceso/"
+# Compatibilidad con el sistema de plugins.
+# La URL real de inicio de sesión se resuelve según el perfil.
+LOGIN_URL = "https://cl.computrabajo.com/"
 ID_FROM_URL = re.compile(r"computrabajo\.com.*-([0-9A-F]{32})")
-BASE = "https://ve.computrabajo.com"
 
 BUTTON = r"^\s*postular(me)?\s*$"
 SUCCESS = re.compile(r"(te )?has postulado|postulaci[oó]n (enviada|realizada|exitosa|completada)|"
@@ -31,23 +37,50 @@ def _logged_out(page):
 
 
 def search(page, cfg, seen):
+    country = cfg["candidate_location"]["country"]
+    base = computrabajo_base(country)
+    country_code = computrabajo_country_code(country)
+
+    print(
+       f"Computrabajo: buscando en {country} "
+       f"({cfg['candidate_location']['city']})",
+       flush=True,
+    )
+
     found = set()
+
     for term in cfg["searches"]["computrabajo"]:
         for p in range(1, cfg.get("pages_per_search", 2) + 1):
-            url = f"{BASE}/trabajo-de-{_slug(term)}?pubdate={cfg.get('max_age_days', 7)}"
+            url = (
+                f"{base}/trabajo-de-{_slug(term)}"
+                f"?pubdate={cfg.get('max_age_days', 7)}"
+            )
+
             if p > 1:
                 url += f"&p={p}"
+
             page.goto(url, wait_until="domcontentloaded")
             pause(2, 4)
+
             items = page.evaluate(JS_LIST)
+
             if not items:
                 break
+
             for it in items:
-                k = f"computrabajo:{it['id']}"
+                k = f"computrabajo:{country_code}:{it['id']}"
+
                 if k in found or seen(k):
                     continue
+
                 found.add(k)
-                yield Offer(NAME, k, BASE + it["href"].split("#")[0], title=it["title"])
+
+                yield Offer(
+                    NAME,
+                    k,
+                    urljoin(base, it["href"].split("#")[0]),
+                    title=it["title"],
+                )
 
 
 def details(page, offer):

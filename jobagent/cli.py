@@ -26,6 +26,7 @@ from jobagent.core import DATA_DIR, SessionExpired, pause
 from jobagent.forms import FormAssistant
 from jobagent.sites import SITES
 from jobagent.tracker import Tracker
+from jobagent.location import computrabajo_login
 
 ROOT = Path.cwd()
 DEMO = Path(__file__).parent / "demo"
@@ -80,19 +81,59 @@ def load_yaml(name, root=ROOT):
         sys.exit(f"{name} not found. Copy {path.stem}.example.yaml to {name} and edit it.")
     return path.read_text(encoding="utf-8")
 
+def add_candidate_location(cfg, root=ROOT):
+    profile = yaml.safe_load(load_yaml("profile.yaml", root)) or {}
+
+    country = str(profile.get("country") or "").strip()
+    city = str(profile.get("city") or "").strip()
+
+    if not country:
+        raise ValueError(
+            "Indica el país de residencia en profile.yaml."
+        )
+
+    cfg["candidate_location"] = {
+        "country": country,
+        "city": city,
+        "work_mode": profile.get("work_mode", ""),
+        "job_preferences": profile.get("job_preferences", {}),
+    }
+
+    return cfg
 
 def login_mode(cfg):
     with sync_playwright() as p:
         ctx = open_browser(p)
-        sites = [s for s, on in cfg["sites"].items() if on]
-        for i, s in enumerate(sites):
-            page = ctx.pages[0] if i == 0 and ctx.pages else ctx.new_page()
-            page.goto(SITES[s].LOGIN_URL)
-        print("\nLog in on every tab and make sure each profile has your CV uploaded.")
-        input("When done, press Enter here to save the sessions... ")
-        ctx.close()
-    print("Done. Sessions are saved.")
 
+        sites = [
+            s for s, enabled in cfg["sites"].items()
+            if enabled
+        ]
+
+        try:
+            for i, s in enumerate(sites):
+                page = (
+                    ctx.pages[0]
+                    if i == 0 and ctx.pages
+                    else ctx.new_page()
+                )
+
+                if s == "computrabajo":
+                    country = cfg["candidate_location"]["country"]
+                    login_url = computrabajo_login(country)
+                else:
+                    login_url = SITES[s].LOGIN_URL
+
+                log(f"{s}: inicio de sesión en {login_url}")
+                page.goto(login_url)
+
+            print("Inicia sesión manualmente en las pestañas abiertas.")
+            input("Cuando termines, presiona Enter aquí...")
+
+        finally:
+            ctx.close()
+
+    print("Sesiones guardadas.")
 
 class Run:
     def __init__(self, cfg, dry_run, root=ROOT, data=DATA_DIR):
@@ -276,6 +317,7 @@ def main():
     if os.environ.get("JOBAGENT_LLM") == "fake":
         sys.exit("JOBAGENT_LLM=fake is only allowed with --demo: it would submit canned answers to real boards.")
     cfg = yaml.safe_load(load_yaml("config.yaml"))
+    cfg = add_candidate_location(cfg)
     if args.login:
         login_mode(cfg)
         return
